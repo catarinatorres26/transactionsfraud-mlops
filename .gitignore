@@ -1,0 +1,13 @@
+# Dados (não versionar)
+data/
+!data/.gitkeep
+
+# Artefactos de treino (não versionar)
+artifacts/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
