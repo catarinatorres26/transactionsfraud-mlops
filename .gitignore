@@ -7,9 +7,12 @@ data/splits/*.csv
 # =====================
 # Notebook outputs
 # =====================
-notebooks/artifacts/
-notebooks/reports/
+data/*.csv
+data/splits/*.csv
 notebooks/.ipynb_checkpoints/
+src/steps/.ipynb_checkpoints/
+notebooks/artifacts/
+*.joblib
 
 # =====================
 # Model artifacts
