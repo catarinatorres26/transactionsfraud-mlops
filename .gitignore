@@ -1,13 +1,26 @@
-# Dados (não versionar)
-data/
-!data/.gitkeep
+# =====================
+# Data (NUNCA versionar)
+# =====================
+data/*.csv
+data/splits/*.csv
 
-# Artefactos de treino (não versionar)
-artifacts/
+# =====================
+# Notebook outputs
+# =====================
+notebooks/artifacts/
+notebooks/reports/
+notebooks/.ipynb_checkpoints/
 
-# Python cache
+# =====================
+# Model artifacts
+# =====================
+*.joblib
+*.pkl
+*.tar.gz
+
+# =====================
+# Python
+# =====================
 __pycache__/
 *.pyc
 
-# Jupyter checkpoints
-.ipynb_checkpoints/
