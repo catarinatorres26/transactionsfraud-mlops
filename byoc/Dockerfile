@@ -11,6 +11,11 @@ RUN pip install -r requirements.txt
 
 COPY inference.py .
 
+COPY serve /usr/local/bin/serve
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/serve /usr/local/bin/docker-entrypoint.sh
+
 EXPOSE 8080
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "120", "inference:app"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["serve"]
