@@ -1,64 +1,43 @@
-import os
-import time
+import os, time, uuid
 import boto3
-from sagemaker import image_uris
 
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
-BUCKET = "aidm-creditcard-fraud-267567228900"
+BUCKET = os.getenv("BUCKET", "aidm-creditcard-fraud-267567228900")
 
-ENDPOINT_NAME = "transactionsfraud-byoc-endpoint"
-SCHEDULE_NAME = "transactionsfraud-dataquality-schedule"
-
+ENDPOINT_NAME = os.getenv("ENDPOINT_NAME", "transactionsfraud-byoc-endpoint")
 ROLE_ARN = os.getenv("ROLE_ARN", "arn:aws:iam::267567228900:role/iseg-prd-sagemaker-role")
 
+# Baseline
 BASELINE_STATS = f"s3://{BUCKET}/monitoring/baseline/statistics.json"
 BASELINE_CONS  = f"s3://{BUCKET}/monitoring/baseline/constraints.json"
-OUTPUT_S3      = f"s3://{BUCKET}/monitoring/reports/"
 
-# 5 em 5 minutos (para gerar evidência rapidamente)
-SCHEDULE_CRON = "cron(0/5 * * * ? *)"
+# Output
+OUTPUT_S3 = f"s3://{BUCKET}/monitoring/reports/"
+
+# Image do Model Monitor (já tens esta)
+MONITOR_IMAGE = "468650794304.dkr.ecr.eu-west-1.amazonaws.com/sagemaker-model-monitor-analyzer:latest"
+
+# Cron construído sem copy/paste do '?'
+SCHEDULE_CRON = "cron(" + "0/5 * * * ? *" + ")"
 
 sm = boto3.client("sagemaker", region_name=AWS_REGION)
 
-def _wait_schedule_deleted(name: str, timeout_sec: int = 180):
-    start = time.time()
-    while True:
-        try:
-            sm.describe_monitoring_schedule(MonitoringScheduleName=name)
-            if time.time() - start > timeout_sec:
-                raise TimeoutError(f"Timeout a aguardar delete do schedule {name}")
-            time.sleep(5)
-        except sm.exceptions.ResourceNotFound:
-            return
-
 def main():
-    monitor_image = image_uris.retrieve(framework="model-monitor", region=AWS_REGION)
-    # Algumas contas devolvem sem tag; força :latest se faltar
-    if ":" not in monitor_image:
-        monitor_image = monitor_image + ":latest"
-    print("Model Monitor image:", monitor_image)
+    # Nome único para não colidir com schedules antigos
+    schedule_name = "transactionsfraud-dq-" + time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6]
+    print("Schedule:", schedule_name)
+    print("Cron:", SCHEDULE_CRON, "repr=", repr(SCHEDULE_CRON))
 
     ep = sm.describe_endpoint(EndpointName=ENDPOINT_NAME)
-    ep_cfg_name = ep["EndpointConfigName"]
-    ep_cfg = sm.describe_endpoint_config(EndpointConfigName=ep_cfg_name)
+    ep_cfg = sm.describe_endpoint_config(EndpointConfigName=ep["EndpointConfigName"])
     variant_name = ep_cfg["ProductionVariants"][0]["VariantName"]
 
-    # Delete se existir, e esperar até desaparecer
-    try:
-        sm.describe_monitoring_schedule(MonitoringScheduleName=SCHEDULE_NAME)
-        sm.delete_monitoring_schedule(MonitoringScheduleName=SCHEDULE_NAME)
-        print("Schedule antigo apagado (request):", SCHEDULE_NAME)
-        _wait_schedule_deleted(SCHEDULE_NAME)
-        print("Schedule confirmado apagado:", SCHEDULE_NAME)
-    except sm.exceptions.ResourceNotFound:
-        pass
-
     sm.create_monitoring_schedule(
-        MonitoringScheduleName=SCHEDULE_NAME,
+        MonitoringScheduleName=schedule_name,
         MonitoringScheduleConfig={
             "ScheduleConfig": {"ScheduleExpression": SCHEDULE_CRON},
             "MonitoringJobDefinition": {
-                "MonitoringAppSpecification": {"ImageUri": monitor_image},
+                "MonitoringAppSpecification": {"ImageUri": MONITOR_IMAGE},
                 "MonitoringInputs": [
                     {
                         "EndpointInput": {
@@ -93,14 +72,15 @@ def main():
                     "ConstraintsResource": {"S3Uri": BASELINE_CONS},
                     "StatisticsResource": {"S3Uri": BASELINE_STATS},
                 },
+                "Environment": {
+                    "endpoint_name": ENDPOINT_NAME,
+                    "endpoint_variant_name": variant_name,
+                },
             },
         },
     )
 
-    print("Schedule criado:", SCHEDULE_NAME)
-    print("EndpointConfig usado:", ep_cfg_name)
-    print("VariantName:", variant_name)
-    print("Cron:", SCHEDULE_CRON)
+    print("OK: schedule criado")
 
 if __name__ == "__main__":
     main()
