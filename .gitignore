@@ -27,3 +27,12 @@ notebooks/artifacts/
 __pycache__/
 *.pyc
 
+buildspec.yml
+byoc/Dockerfile
+byoc/inference.py
+byoc/requirements.txt
+byoc/serve
+src/steps/create_data_quality_schedule.py
+src/steps/deploy_byoc_endpoint.py
+src/steps/run_data_quality_now.py
+src/steps/test_endpoint.py
