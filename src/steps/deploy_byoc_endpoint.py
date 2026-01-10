@@ -1,138 +1,80 @@
-import os
-import time
 import boto3
 
-AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
+AWS_REGION = "eu-west-1"
 
-# Ajusta se necessário
-ENDPOINT_NAME = os.getenv("ENDPOINT_NAME", "transactionsfraud-byoc-endpoint")
-MODEL_NAME = f"{ENDPOINT_NAME}-model"
-ENDPOINT_CONFIG_NAME = os.getenv("ENDPOINT_CONFIG_NAME", f"{ENDPOINT_NAME}-config")
+MODEL_NAME = "transactionsfraud-byoc-model"
+ENDPOINT_CONFIG_NAME = "transactionsfraud-byoc-config"
+ENDPOINT_NAME = "transactionsfraud-byoc-endpoint"
 
-# Obrigatórios (tens isto no teu repo; mantém os mesmos valores)
-ROLE_ARN = os.getenv("ROLE_ARN", "arn:aws:iam::267567228900:role/iseg-prd-sagemaker-role")
+IMAGE_URI = "267567228900.dkr.ecr.eu-west-1.amazonaws.com/transactionsfraud-byoc:fix4c"
 
-# Model Package do Model Registry (o teu já existe)
-MODEL_PACKAGE_ARN = os.getenv(
-    "MODEL_PACKAGE_ARN",
-    "arn:aws:sagemaker:eu-west-1:267567228900:model-package/transactionsfraud-sklearn/1",
-)
 
-# BYOC image no ECR (já tens :latest)
-IMAGE_URI = os.getenv(
-    "IMAGE_URI",
-    "267567228900.dkr.ecr.eu-west-1.amazonaws.com/transactionsfraud-byoc:latest",
-)
+MODEL_DATA_URL = "s3://sagemaker-eu-west-1-267567228900/sagemaker-scikit-lea-260108-1333-006-6204bea1/output/model.tar.gz"
 
-INSTANCE_TYPE = os.getenv("INSTANCE_TYPE", "ml.m5.large")
-INITIAL_INSTANCE_COUNT = int(os.getenv("INITIAL_INSTANCE_COUNT", "1"))
+# Idealmente, usa o mesmo role que já usas noutros scripts de SageMaker no repo
+ROLE_ARN = "arn:aws:iam::267567228900:role/iseg-prd-sagemaker-role"
 
 sm = boto3.client("sagemaker", region_name=AWS_REGION)
 
 
-def _exists_model(model_name: str) -> bool:
+def ensure_model():
     try:
-        sm.describe_model(ModelName=model_name)
-        return True
-    except sm.exceptions.ClientError as e:
-        if "Could not find model" in str(e) or "ValidationException" in str(e):
-            return False
-        raise
-
-
-def _delete_endpoint_if_exists(name: str):
-    try:
-        sm.describe_endpoint(EndpointName=name)
-        print("Endpoint já existe. A apagar:", name)
-        sm.delete_endpoint(EndpointName=name)
-        # esperar até desaparecer
-        while True:
-            try:
-                sm.describe_endpoint(EndpointName=name)
-                time.sleep(10)
-            except sm.exceptions.ClientError as e:
-                if "Could not find endpoint" in str(e) or "ValidationException" in str(e):
-                    break
-                raise
-    except sm.exceptions.ClientError as e:
-        if "Could not find endpoint" in str(e) or "ValidationException" in str(e):
-            return
-        raise
-
-
-def _delete_endpoint_config_if_exists(name: str):
-    try:
-        sm.describe_endpoint_config(EndpointConfigName=name)
-        print("Endpoint config já existe. A apagar:", name)
-        sm.delete_endpoint_config(EndpointConfigName=name)
-    except sm.exceptions.ClientError as e:
-        if "Could not find endpoint configuration" in str(e) or "ValidationException" in str(e):
-            return
-        raise
-
-
-def _wait_endpoint(name: str, timeout_sec: int = 1800):
-    start = time.time()
-    while True:
-        desc = sm.describe_endpoint(EndpointName=name)
-        status = desc["EndpointStatus"]
-        print("EndpointStatus:", status)
-        if status == "InService":
-            return
-        if status == "Failed":
-            print("FailureReason:", desc.get("FailureReason", "NA"))
-            raise RuntimeError(f"Endpoint {name} failed")
-        if time.time() - start > timeout_sec:
-            raise TimeoutError(f"Timeout waiting for endpoint {name}")
-        time.sleep(20)
-
-
-def main():
-    # 1) ModelDataUrl a partir do Model Package
-    mp = sm.describe_model_package(ModelPackageName=MODEL_PACKAGE_ARN)
-    model_data_url = mp["InferenceSpecification"]["Containers"][0]["ModelDataUrl"]
-
-    # 2) Create Model (ou reuse)
-    if _exists_model(MODEL_NAME):
-        print("Model já existe. A reutilizar:", MODEL_NAME)
-    else:
-        print("Creating model:", MODEL_NAME)
+        sm.describe_model(ModelName=MODEL_NAME)
+        print(f"Model exists: {MODEL_NAME}")
+    except sm.exceptions.ClientError:
+        print(f"Creating model: {MODEL_NAME}")
         sm.create_model(
             ModelName=MODEL_NAME,
-            PrimaryContainer={
-                "Image": IMAGE_URI,
-                "ModelDataUrl": model_data_url,
-            },
             ExecutionRoleArn=ROLE_ARN,
+            PrimaryContainer={"Image": IMAGE_URI, "ModelDataUrl": MODEL_DATA_URL},
         )
 
-    # 3) Endpoint config: apagar e recriar (mais simples/robusto)
-    _delete_endpoint_config_if_exists(ENDPOINT_CONFIG_NAME)
-    print("Creating endpoint config:", ENDPOINT_CONFIG_NAME)
-    sm.create_endpoint_config(
-        EndpointConfigName=ENDPOINT_CONFIG_NAME,
-        ProductionVariants=[
-            {
-                "VariantName": "AllTraffic",
-                "ModelName": MODEL_NAME,
-                "InitialInstanceCount": INITIAL_INSTANCE_COUNT,
-                "InstanceType": INSTANCE_TYPE,
-                "InitialVariantWeight": 1.0,
-            }
-        ],
-    )
 
-    # 4) Endpoint: se existir, apagar e recriar (garante consistência)
-    _delete_endpoint_if_exists(ENDPOINT_NAME)
-    print("Creating endpoint:", ENDPOINT_NAME)
-    sm.create_endpoint(
-        EndpointName=ENDPOINT_NAME,
-        EndpointConfigName=ENDPOINT_CONFIG_NAME,
-    )
+def ensure_endpoint_config():
+    try:
+        sm.describe_endpoint_config(EndpointConfigName=ENDPOINT_CONFIG_NAME)
+        print(f"EndpointConfig exists: {ENDPOINT_CONFIG_NAME}")
+    except sm.exceptions.ClientError:
+        print(f"Creating EndpointConfig: {ENDPOINT_CONFIG_NAME}")
+        sm.create_endpoint_config(
+            EndpointConfigName=ENDPOINT_CONFIG_NAME,
+            ProductionVariants=[
+                {
+                    "VariantName": "AllTraffic",
+                    "ModelName": MODEL_NAME,
+                    "InstanceType": "ml.m5.large",
+                    "InitialInstanceCount": 1,
+                }
+            ],
+        )
 
-    _wait_endpoint(ENDPOINT_NAME)
-    print("Done.")
+
+def create_or_update_endpoint():
+    try:
+        sm.describe_endpoint(EndpointName=ENDPOINT_NAME)
+        print(f"Updating Endpoint: {ENDPOINT_NAME}")
+        sm.update_endpoint(
+            EndpointName=ENDPOINT_NAME,
+            EndpointConfigName=ENDPOINT_CONFIG_NAME,
+        )
+    except sm.exceptions.ClientError:
+        print(f"Creating Endpoint: {ENDPOINT_NAME}")
+        sm.create_endpoint(
+            EndpointName=ENDPOINT_NAME,
+            EndpointConfigName=ENDPOINT_CONFIG_NAME,
+        )
+
+
+def wait_in_service():
+    print("Waiting for endpoint to be InService...")
+    waiter = sm.get_waiter("endpoint_in_service")
+    waiter.wait(EndpointName=ENDPOINT_NAME)
+    print("Endpoint is InService")
 
 
 if __name__ == "__main__":
-    main()
+    ensure_model()
+    ensure_endpoint_config()
+    create_or_update_endpoint()
+    wait_in_service()
+

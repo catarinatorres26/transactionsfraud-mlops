@@ -1,74 +1,80 @@
-import os
 import json
+import os
+from io import StringIO
+from typing import Any, Tuple
+
 import joblib
+import numpy as np
 import pandas as pd
-from flask import Flask, request, Response
-
-MODEL_PATH = os.environ.get("MODEL_PATH", "/opt/ml/model/model.joblib")
-
-app = Flask(__name__)
-model = None
 
 
-def load_model():
-    global model
-    if model is None:
-        if not os.path.exists(MODEL_PATH):
-            # Ajuda a depurar quando o tar.gz não tem o ficheiro esperado
-            contents = []
-            if os.path.exists("/opt/ml/model"):
-                contents = os.listdir("/opt/ml/model")
-            raise FileNotFoundError(f"Model not found at {MODEL_PATH}. /opt/ml/model contents: {contents}")
-        model = joblib.load(MODEL_PATH)
-    return model
+def _ensure_2d(x: Any) -> np.ndarray:
+    arr = np.asarray(x)
+    if arr.ndim == 1:
+        arr = arr.reshape(1, -1)
+    return arr
 
 
-@app.get("/ping")
-def ping():
-    try:
-        load_model()
-        return Response(response="OK", status=200, mimetype="text/plain")
-    except Exception as e:
-        return Response(response=str(e), status=500, mimetype="text/plain")
+def model_fn(model_dir: str):
+    """
+    SageMaker extrai model.tar.gz para /opt/ml/model.
+    Precisamos de encontrar model.joblib na raiz.
+    """
+    path = os.path.join(model_dir, "model.joblib")
+    if not os.path.exists(path):
+        contents = os.listdir(model_dir) if os.path.exists(model_dir) else []
+        raise FileNotFoundError(f"model.joblib not found at {path}. Contents: {contents}")
+    return joblib.load(path)
 
 
-@app.post("/invocations")
-def invocations():
-    m = load_model()
-
-    ctype = request.content_type or ""
-    raw = request.data.decode("utf-8")
-
-    if "text/csv" in ctype:
-        # CSV sem header; uma ou várias linhas
-        df = pd.read_csv(pd.io.common.StringIO(raw), header=None)
-    elif "application/json" in ctype:
-        payload = json.loads(raw)
-        rows = payload.get("instances") or payload.get("data")
+def input_fn(request_body: str, content_type: str):
+    """
+    Suporta:
+      - application/json com {"instances": [[...], ...]} (recomendado)
+        ou {"data": [[...], ...]} (fallback)
+      - text/csv com linhas numéricas (sem header)
+    """
+    if content_type and content_type.startswith("application/json"):
+        payload = json.loads(request_body)
+        rows = payload.get("instances", payload.get("data"))
         if rows is None:
-            return Response(
-                response="JSON must contain 'instances' or 'data' with rows.",
-                status=400,
-                mimetype="text/plain",
-            )
-        df = pd.DataFrame(rows)
-    else:
-        return Response(
-            response=f"Unsupported content-type: {ctype}. Use text/csv or application/json.",
-            status=415,
-            mimetype="text/plain",
-        )
+            raise ValueError("JSON must include 'instances' (preferred) or 'data'.")
+        return _ensure_2d(rows)
 
-    if hasattr(m, "predict_proba"):
-        proba = m.predict_proba(df)[:, 1].tolist()
+    if content_type in ("text/csv", "text/plain"):
+        df = pd.read_csv(StringIO(request_body), header=None)
+        return df.values
+
+    raise ValueError(f"Unsupported Content-Type: {content_type}")
+
+
+def predict_fn(input_data, model):
+    """
+    Devolve classe e, se existir, probabilidade da classe positiva.
+    """
+    X = input_data
+
+    if hasattr(model, "predict_proba"):
+        proba = model.predict_proba(X)[:, 1]
     else:
         proba = None
 
-    pred = m.predict(df).tolist()
-
-    out = {"pred": pred, "proba": proba}
-    return Response(response=json.dumps(out), status=200, mimetype="application/json")
+    pred = model.predict(X)
+    return {"pred": pred, "proba": proba}
 
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+def output_fn(prediction, accept: str) -> Tuple[str, str]:
+    """
+    Resposta JSON.
+    """
+    if accept in ("application/json", "*/*", None):
+        pred = prediction["pred"]
+        proba = prediction["proba"]
+
+        out = {
+            "pred": pred.tolist() if hasattr(pred, "tolist") else pred,
+            "proba": proba.tolist() if proba is not None and hasattr(proba, "tolist") else None,
+        }
+        return json.dumps(out), "application/json"
+
+    raise ValueError(f"Unsupported Accept: {accept}")

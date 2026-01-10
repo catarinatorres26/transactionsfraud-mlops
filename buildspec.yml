@@ -2,30 +2,26 @@ version: 0.2
 
 env:
   variables:
-    AWS_REGION: "eu-west-1"
-    ACCOUNT_ID: "267567228900"
-    REPO_NAME: "transactionsfraud-byoc"
-    IMAGE_TAG: "latest"
+    AWS_REGION: eu-west-1
+    ECR_REPO: transactionsfraud-byoc
+    IMAGE_TAG: fix1
 
 phases:
   pre_build:
     commands:
-      - echo "Login ECR"
-      - aws ecr describe-repositories --repository-names $REPO_NAME --region $AWS_REGION >/dev/null 2>&1 || aws ecr create-repository --repository-name $REPO_NAME --region $AWS_REGION
-      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-      - IMAGE_URI=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPO_NAME}:${IMAGE_TAG}
-      - echo "IMAGE_URI=$IMAGE_URI"
+      - ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+      - IMAGE_URI=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${IMAGE_TAG}
+      - aws ecr describe-repositories --repository-names ${ECR_REPO} --region ${AWS_REGION} >/dev/null 2>&1 || aws ecr create-repository --repository-name ${ECR_REPO} --region ${AWS_REGION}
+      - aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
   build:
     commands:
-      - echo "Build started on $(date)"
-      - docker build -t ${REPO_NAME}:${IMAGE_TAG} ./byoc
-      - docker tag ${REPO_NAME}:${IMAGE_TAG} ${IMAGE_URI}
+      - docker build -t ${ECR_REPO}:${IMAGE_TAG} -f byoc/Dockerfile byoc
+      - docker tag ${ECR_REPO}:${IMAGE_TAG} ${IMAGE_URI}
   post_build:
     commands:
-      - echo "Pushing image..."
       - docker push ${IMAGE_URI}
-      - printf '{"ImageURI":"%s"}' ${IMAGE_URI} > imageDetail.json
+      - echo ${IMAGE_URI} > image_uri.txt
 
 artifacts:
   files:
-    - imageDetail.json
+    - image_uri.txt

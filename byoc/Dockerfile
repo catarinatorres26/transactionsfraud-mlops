@@ -1,21 +1,21 @@
-FROM python:3.9-slim
+FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PORT=8080
+    PORT=8080 \
+    SAGEMAKER_PROGRAM=inference.py
 
 WORKDIR /opt/program
 
+# Instala deps SEM rede (a partir de wheels locais)
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+COPY wheels /opt/wheels
+RUN pip install --no-index --find-links=/opt/wheels -r requirements.txt
 
-COPY inference.py .
-
+# Código de inference e entrypoint
+COPY inference.py /opt/program/inference.py
 COPY serve /usr/local/bin/serve
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/serve /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/serve
 
 EXPOSE 8080
-
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-CMD ["serve"]
+ENTRYPOINT ["serve"]
