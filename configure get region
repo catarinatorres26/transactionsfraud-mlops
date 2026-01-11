@@ -1,0 +1,49 @@
+{
+    "Domains": [
+        {
+            "DomainArn": "arn:aws:sagemaker:eu-west-1:267567228900:domain/d-qvlpwdosdmvz",
+            "DomainId": "d-qvlpwdosdmvz",
+            "DomainName": "AI-AgenticAI",
+            "Status": "InService",
+            "CreationTime": "2025-11-08T21:17:05.593000+00:00",
+            "LastModifiedTime": "2025-11-08T21:24:35.250000+00:00",
+            "Url": "https://d-qvlpwdosdmvz.studio.eu-west-1.sagemaker.aws"
+        },
+        {
+            "DomainArn": "arn:aws:sagemaker:eu-west-1:267567228900:domain/d-9ogktlzvuui6",
+            "DomainId": "d-9ogktlzvuui6",
+            "DomainName": "AIDeploymentAndMonitoring",
+            "Status": "InService",
+            "CreationTime": "2024-10-31T10:30:22.959000+00:00",
+            "LastModifiedTime": "2025-03-22T13:09:42.858000+00:00",
+            "Url": "https://d-9ogktlzvuui6.studio.eu-west-1.sagemaker.aws"
+        },
+        {
+            "DomainArn": "arn:aws:sagemaker:eu-west-1:267567228900:domain/d-fcsfnfjg1lns",
+            "DomainId": "d-fcsfnfjg1lns",
+            "DomainName": "AI-Management",
+            "Status": "InService",
+            "CreationTime": "2024-10-16T13:16:53.533000+00:00",
+            "LastModifiedTime": "2025-01-22T18:32:02.982000+00:00",
+            "Url": "https://d-fcsfnfjg1lns.studio.eu-west-1.sagemaker.aws"
+        },
+        {
+            "DomainArn": "arn:aws:sagemaker:eu-west-1:267567228900:domain/d-3nj7jti6npzx",
+            "DomainId": "d-3nj7jti6npzx",
+            "DomainName": "Python-Introduction",
+            "Status": "InService",
+            "CreationTime": "2024-10-16T13:16:53.465000+00:00",
+            "LastModifiedTime": "2025-03-14T09:56:21.575000+00:00",
+            "Url": "https://d-3nj7jti6npzx.studio.eu-west-1.sagemaker.aws"
+        },
+        {
+            "DomainArn": "arn:aws:sagemaker:eu-west-1:267567228900:domain/d-ayjsxiiw64ip",
+            "DomainId": "d-ayjsxiiw64ip",
+            "DomainName": "AI-Data-Modeling",
+            "Status": "InService",
+            "CreationTime": "2024-10-16T13:16:43.728000+00:00",
+            "LastModifiedTime": "2025-01-21T21:23:10.464000+00:00",
+            "Url": "https://d-ayjsxiiw64ip.studio.eu-west-1.sagemaker.aws"
+        }
+    ]
+}
